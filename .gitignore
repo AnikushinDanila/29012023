@@ -1,0 +1,4 @@
+Flask/
+*.db
+.idea/
+__pycache__/
