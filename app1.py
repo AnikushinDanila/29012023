@@ -13,29 +13,60 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
-# QuoteModel --> dict --> JSON
-class QuoteModel(db.Model):
+
+class AuthorModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    author = db.Column(db.String(32), unique=False)
-    text = db.Column(db.String(255), unique=False)
-    rating = db.Column(db.SmallInteger())
+    name = db.Column(db.String(32), unique=True)
+    quotes = db.relationship('QuoteModel', backref='author', lazy='dynamic', cascade="all, delete-orphan")
 
-    def __init__(self, author, text):
-        self.author = author
-        self.text = text
-
-    def __repr__(self):
-        return f"Quote: {self.author} {self.text}"
+    def __init__(self, name):
+        self.name = name
 
     def to_dict(self):
         return {
             "id": self.id,
-            "author": self.author,
+            "name": self.name
+        }
+
+
+class QuoteModel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    author_id = db.Column(db.Integer, db.ForeignKey(AuthorModel.id))
+    text = db.Column(db.String(255), unique=False)
+
+    def __init__(self, author, text):
+        self.author_id = author.id
+        self.text = text
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "author": self.author.to_dict(),
             "text": self.text
         }
 
 
-# Сериализация: lis[quotes] --> list[dict] --> str(JSON)
+# Resource: Author
+@app.route("/authors")
+def get_authors():
+    pass
+
+
+@app.route("/authors/<int:author_id>")
+def get_author_by_id(author_id):
+    pass
+
+
+@app.route("/authors", methods=["POST"])
+def create_author():
+    author_data = request.json
+    author = AuthorModel(author_data["name"])
+    db.session.add(author)
+    db.session.commit()
+    return author.to_dict(), 201
+
+
+# Resource: Quote
 @app.route("/quotes")
 def get_all_quotes():
     quotes = QuoteModel.query.all()
@@ -53,13 +84,16 @@ def get_quote(id):
     return quote.to_dict(), 200
 
 
-@app.route("/quotes", methods=['POST'])
-def create_quote():
-    quote_data = request.json
-    quote = QuoteModel(quote_data["author"], quote_data["text"])
-    db.session.add(quote)
+@app.route("/authors/<int:author_id>/quotes", methods=["POST"])
+def create_quote(author_id):
+    author = AuthorModel.query.get(author_id)
+    if author is None:
+        return {"error": f"Author with id={id} not found"}, 404
+    new_quote = request.json
+    q = QuoteModel(author, new_quote["text"])
+    db.session.add(q)
     db.session.commit()
-    return quote.to_dict()
+    return q.to_dict(), 201
 
 
 @app.route("/quotes/<int:id>", methods=['PUT'])
@@ -68,22 +102,10 @@ def edit_quote(id):
     quote = QuoteModel.query.get(id)
     if quote is None:
         return {"error": f"Quote with id={id} not found"}, 404
-    # if quote_data.get("text"):
-    #     quote.text = quote_data['text']
-    # if quote_data.get("author"):
-    #     quote.author = quote_data['author']
     for key, value in quote_data.items():
         setattr(quote, key, value)
     db.session.commit()
     return quote.to_dict(), 200
-
-
-@app.route("/quotes/filter")
-def get_quotes_filter():
-    args = request.args
-    print(args)
-    # TODO: закончить реализацию
-    return {}
 
 
 @app.route("/quotes/<int:id>", methods=['DELETE'])
